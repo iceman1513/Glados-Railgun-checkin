@@ -483,15 +483,20 @@ class Checker:
         """获取所有结果"""
         return [result.to_dict() for result in self.results]
 
-    def format_results(self) -> Tuple[str, str, str]:
-        """格式化结果：原有PushDeer纯文本 + 新增PushPlus Markdown美化格式（截图样式）"""
+        def format_results(self) -> Tuple[str, str, str, str, str]:
+        """格式化结果：原有PushDeer纯文本 + PushPlus Markdown，一行一项，无多余空行"""
         import time
+        import re
+        def clean_float_str(text):
+            """清理字符串里 .000000 这类多余小数"""
+            return re.sub(r"(\d+)\.0+", r"\1", text)
+        
         results = self.get_results()
         success_count = sum(1 for r in results if r["code"] == CheckinStatus.SUCCESS)
         repeat_count = sum(1 for r in results if r["code"] == CheckinStatus.REPEAT)
         fail_count = sum(1 for r in results if r["code"] == CheckinStatus.FAILURE)
 
-        # ========== 原有PushDeer的简单文本，保持不动 ==========
+        # ========== PushDeer 原有文本保持不变 ==========
         title_pushdeer = f"GLaDOS 签到, 成功{success_count}, 失败{fail_count}, 重复{repeat_count}"
         send_content_lines = []
         log_content_lines = []
@@ -506,14 +511,12 @@ class Checker:
         content_pushdeer = "\n".join(send_content_lines)
         log_content = "\n".join(log_content_lines)
 
-        # ========== 新增：PushPlus 美化Markdown消息，在这里处理小数，不改动底层API代码 ==========
+        # ========== PushPlus：分行排版，和截图样式一致 ==========
         sign_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        pushplus_body = f"""🎉Glados 自动签到通知
-签到时间：{sign_time}
-
+        pushplus_body = f"""📅签到时间：{sign_time}
 """
         for res in results:
-            # 在这里做字符串清洗，把 296.000000 → 296，**不修改底层get_points源码**
+            # 数值清洗
             try:
                 today_point_int = int(float(res["points"]))
                 today_point_str = f"{today_point_int}"
@@ -527,7 +530,6 @@ class Checker:
             except:
                 total_point_str = res["points_total"]
 
-            # 剩余天数清洗
             try:
                 day_raw = res["days"].replace(" 天", "")
                 day_int = int(float(day_raw))
@@ -535,22 +537,22 @@ class Checker:
             except:
                 day_str = res["days"]
 
-            email = f"Cookie{res['cookie_index']}"
+            email = res["email"]  # 使用邮箱，不再显示Cookie编号
             status_text = res["status"]
-            exchange_text = res["exchange"]
+            exchange_text = clean_float_str(res["exchange"])
 
-            block = f"""📝{email} ✅
+            # 账号内每一项单独换行；账号之间仅1个换行，无多余空白
+            block = f"""
+📝{email} ✅
 📄状态：{status_text}，获得 {today_point_str} 积分
 🎁今日积分：{today_point_str}
 📅剩余时长：{day_str}
 💰总积分：{total_point_str} 积分
-💎兑换：{exchange_text}
-
-"""
+💎兑换：{exchange_text}"""
             pushplus_body += block
 
-        # 返回：PushDeer标题、PushDeer内容、日志内容、PushPlus标题、PushPlus美化内容
         return title_pushdeer, content_pushdeer, log_content, "Glados 自动签到通知", pushplus_body
+
 
 
 # 初始化日志
