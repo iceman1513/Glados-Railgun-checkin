@@ -389,7 +389,7 @@ class PushService:
             return False
 
     def send_pushplus(self, title: str, content: str) -> bool:
-        """发送PushPlus推送（markdown模板）"""
+        """发送PushPlus推送【修改为 template="html"】"""
         if not self.config.pushplus_key:
             logger.info(f"{LogEmoji.WARNING} 未设置PushPlus密钥，跳过PushPlus推送。")
             return False
@@ -398,7 +398,7 @@ class PushService:
             "token": self.config.pushplus_key,
             "title": title,
             "content": content,
-            "template": "markdown"
+            "template": "html"   # 核心修改：html模板
         }
         try:
             resp = requests.post(url, json=payload, timeout=10)
@@ -483,14 +483,13 @@ class Checker:
         """获取所有结果"""
         return [result.to_dict() for result in self.results]
 
-    def format_results(self) -> Tuple[str, str, str]:
-        """格式化结果：原有PushDeer纯文本 + 新增PushPlus Markdown美化格式（截图样式）"""
+    def format_results(self) -> Tuple[str, str, str, str, str]:
+        """格式化结果：PushDeer纯文本，PushPlus使用HTML格式"""
         import time
         results = self.get_results()
         success_count = sum(1 for r in results if r["code"] == CheckinStatus.SUCCESS)
         repeat_count = sum(1 for r in results if r["code"] == CheckinStatus.REPEAT)
         fail_count = sum(1 for r in results if r["code"] == CheckinStatus.FAILURE)
-
         # ========== 原有PushDeer的简单文本，保持不动 ==========
         title_pushdeer = f"GLaDOS 签到, 成功{success_count}, 失败{fail_count}, 重复{repeat_count}"
         send_content_lines = []
@@ -506,12 +505,9 @@ class Checker:
         content_pushdeer = "\n".join(send_content_lines)
         log_content = "\n".join(log_content_lines)
 
-        # ========== 新增：PushPlus 美化Markdown消息，在这里处理小数，不改动底层API代码 ==========
+        # ========== PushPlus HTML内容，全部用<br>换行，不再用markdown ==========
         sign_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        pushplus_body = f"""🎉Glados 自动签到通知
-签到时间：{sign_time}
-
-"""
+        pushplus_body = f"🎉Glados 自动签到通知<br>签到时间：{sign_time}<br><br>"
         for res in results:
             # 在这里做字符串清洗，把 296.000000 → 296，**不修改底层get_points源码**
             try:
@@ -519,14 +515,12 @@ class Checker:
                 today_point_str = f"{today_point_int}"
             except:
                 today_point_str = res["points"]
-
             try:
                 total_point_raw = res["points_total"].replace(" 积分", "")
                 total_point_int = int(float(total_point_raw))
                 total_point_str = f"{total_point_int}"
             except:
                 total_point_str = res["points_total"]
-
             # 剩余天数清洗
             try:
                 day_raw = res["days"].replace(" 天", "")
@@ -534,22 +528,18 @@ class Checker:
                 day_str = f"{day_int} 天"
             except:
                 day_str = res["days"]
-
             email = f"Cookie{res['cookie_index']}"
             status_text = res["status"]
             exchange_text = res["exchange"]
-
-            block = f"""📝{email} ✅
-📄状态：{status_text}，获得 {today_point_str} 积分
-🎁今日积分：{today_point_str}
-📅剩余时长：{day_str}
-💰总积分：{total_point_str} 积分
-💎兑换：{exchange_text}
-
-"""
+            # HTML换行用 <br>
+            block = f"""📝{email} ✅<br>
+📄状态：{status_text}，获得 {today_point_str} 积分<br>
+🎁今日积分：{today_point_str}<br>
+📅剩余时长：{day_str}<br>
+💰总积分：{total_point_str} 积分<br>
+💎兑换：{exchange_text}<br><br>"""
             pushplus_body += block
 
-        # 返回：PushDeer标题、PushDeer内容、日志内容、PushPlus标题、PushPlus美化内容
         return title_pushdeer, content_pushdeer, log_content, "Glados 自动签到通知", pushplus_body
 
 
@@ -578,7 +568,6 @@ def main():
     except Exception as e:
         logger.error(f"{LogEmoji.ERROR} 主程序执行过程中发生未预期的错误: {e}")
         title, content, log_content, pp_title, pp_content = "# 脚本执行出错", str(e), str(e), "Glados签到异常", str(e)
-
     # 4. 推送
     logger.info(f"{LogEmoji.START} 步骤 4: 发送推送")
     push_service = PushService(config if "config" in locals() else "")
