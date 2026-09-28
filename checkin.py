@@ -11,7 +11,6 @@ from logging_config import init_logger
 
 class CheckinStatus(Enum):
     """签到状态"""
-
     SUCCESS = 0
     REPEAT = 1
     FAILURE = -2
@@ -19,7 +18,6 @@ class CheckinStatus(Enum):
 
 class ExchangePlan(Enum):
     """兑换计划"""
-
     PLAN100 = "plan100"
     PLAN200 = "plan200"
     PLAN500 = "plan500"
@@ -27,7 +25,6 @@ class ExchangePlan(Enum):
 
 class APIEndpoint(Enum):
     """API端点"""
-
     CHECKIN = "/api/user/checkin"
     STATUS = "/api/user/status"
     POINTS = "/api/user/points"
@@ -36,7 +33,6 @@ class APIEndpoint(Enum):
 
 class LogEmoji:
     """日志 Emoji 常量"""
-
     SUCCESS = "✅"
     FAIL = "❌"
     REPEAT = "🔄"
@@ -56,7 +52,6 @@ class LogEmoji:
 
 def log_method(func):
     """日志装饰器"""
-
     def wrapper(self, *args, **kwargs):
         method_name = func.__name__
         emoji_map = {
@@ -71,14 +66,12 @@ def log_method(func):
             return result
         except Exception as e:
             logger.error(f"{LogEmoji.COOKIE}[{self.cookie_index}] {LogEmoji.DOMAIN}[{self.domain}] {LogEmoji.ERROR} {method_name} 执行失败: {e}")
-
             DEFAULT_ERRORS = {
                 "checkin": {"status": "签到失败", "points": "0", "message": ""},
                 "get_status": ("None 天", -2),
                 "get_points": ("None 积分", 0),
                 "exchange": "",
             }
-
             if method_name in DEFAULT_ERRORS:
                 error_template = DEFAULT_ERRORS[method_name]
                 if isinstance(error_template, dict):
@@ -87,27 +80,22 @@ def log_method(func):
                     return error_result
                 return error_template
             raise
-
     return wrapper
 
 
 class Config:
     """应用配置"""
-
     ENV_PUSH_KEY = "PUSHDEER_SENDKEY"
+    ENV_PUSHPLUS_KEY = "PUSHPLUS_SENDKEY"
     ENV_COOKIES = "GLADOS_COOKIES"
     ENV_EXCHANGE_PLAN = "GLADOS_EXCHANGE_PLAN"
     ENV_VERBOSE = "GLADOS_VERBOSE"
-
     """默认兑换计划（none 表示不自动兑换）"""
     DEFAULT_EXCHANGE_PLAN = "none"
-
     """默认是否输出详细响应"""
     DEFAULT_VERBOSE = False
-
     """默认域名"""
     DOMAINS = ["glados.cloud"]
-
     """兑换计划列表"""
     EXCHANGE_PLANS = {
         ExchangePlan.PLAN100.value: 100,
@@ -117,6 +105,7 @@ class Config:
 
     def __init__(self):
         self.push_key: str = ""
+        self.pushplus_key: str = ""
         self.cookies_list: List[str] = []
         self.exchange_plan: str = self.DEFAULT_EXCHANGE_PLAN
         self.verbose: bool = self.DEFAULT_VERBOSE
@@ -125,6 +114,7 @@ class Config:
     def _load_config(self) -> None:
         """加载配置"""
         push_key_env: Optional[str] = os.environ.get(self.ENV_PUSH_KEY)
+        pushplus_key_env: Optional[str] = os.environ.get(self.ENV_PUSHPLUS_KEY)
         raw_cookies_env: Optional[str] = os.environ.get(self.ENV_COOKIES)
         exchange_plan_env: Optional[str] = os.environ.get(self.ENV_EXCHANGE_PLAN)
         verbose_env: Optional[str] = os.environ.get(self.ENV_VERBOSE)
@@ -134,6 +124,12 @@ class Config:
             self.push_key = ""
         else:
             self.push_key = push_key_env
+
+        if not pushplus_key_env:
+            logger.warning(f"{LogEmoji.WARNING} 环境变量 '{self.ENV_PUSHPLUS_KEY}' 未设置，跳过PushPlus推送。")
+            self.pushplus_key = ""
+        else:
+            self.pushplus_key = pushplus_key_env
 
         if not raw_cookies_env:
             logger.warning(f"{LogEmoji.WARNING} 环境变量 '{self.ENV_COOKIES}' 未设置。")
@@ -156,6 +152,7 @@ class Config:
 
         logger.info(f"{LogEmoji.INFO} 共加载了 {len(self.cookies_list)} 个 Cookie 用于签到。")
         logger.info(f"{LogEmoji.INFO} 当前 {self.ENV_PUSH_KEY} {'已设置' if push_key_env else '未设置'}。")
+        logger.info(f"{LogEmoji.INFO} 当前 {self.ENV_PUSHPLUS_KEY} {'已设置' if pushplus_key_env else '未设置'}。")
         logger.info(f"{LogEmoji.INFO} 当前 {self.ENV_EXCHANGE_PLAN}: {self.exchange_plan}。")
 
         if verbose_env is not None:
@@ -166,13 +163,11 @@ class Config:
                 self.verbose = False
             else:
                 logger.warning(f"{LogEmoji.WARNING} 环境变量 '{self.ENV_VERBOSE}' 的值 '{verbose_env}' 无效，将使用默认值 {self.DEFAULT_VERBOSE}。")
-
         logger.info(f"{LogEmoji.INFO} 当前 {self.ENV_VERBOSE}: {self.verbose}。")
 
 
 class API:
     """API 调用"""
-
     CHECKIN_URL = APIEndpoint.CHECKIN.value
     STATUS_URL = APIEndpoint.STATUS.value
     POINTS_URL = APIEndpoint.POINTS.value
@@ -216,9 +211,7 @@ class API:
 
     def _log(self, level: str, emoji: str, message: str, force: bool = False) -> None:
         """统一日志输出方法"""
-
         log_message = f"{LogEmoji.COOKIE}[{self.cookie_index}] {LogEmoji.DOMAIN}[{self.domain}] {emoji} {message}"
-
         if force or self.verbose:
             if level == "info":
                 logger.info(log_message)
@@ -235,7 +228,6 @@ class API:
         """发送 HTTP 请求"""
         session_headers = self.headers.copy()
         session_headers["cookie"] = cookies
-
         try:
             if method.upper() == "POST":
                 response = self.session.post(url, headers=session_headers, data=data, timeout=(60, 120))
@@ -244,7 +236,6 @@ class API:
             else:
                 self._log("error", LogEmoji.ERROR, f"不支持的 HTTP 方法: {method}", force=True)
                 return None
-
             if not response.ok:
                 self._log("warning", LogEmoji.WARNING, f"向 {url} 发起的请求失败，状态码 {response.status_code}。响应内容: {response.text}", force=True)
                 return None
@@ -263,20 +254,17 @@ class API:
         url = self._get_full_url(self.CHECKIN_URL)
         checkin_data = self._get_checkin_data()
         response = self._make_request(url, "POST", checkin_data, cookies)
-
         result = {
             "status": "签到失败",
             "points": "0",
             "message": "",
             "code": CheckinStatus.FAILURE,
         }
-
         if response:
             data = response.json()
             code = data.get("code", -2)
             message = data.get("message", "无消息字段")
             points = str(data.get("points", 0))
-
             if code == CheckinStatus.SUCCESS.value:
                 self._log("info", LogEmoji.SUCCESS, f"{{ code : {code}, points : {points}, message : {message} }}")
                 result["code"] = CheckinStatus.SUCCESS
@@ -300,21 +288,17 @@ class API:
             result["code"] = CheckinStatus.FAILURE
             result["status"] = "签到失败"
             result["message"] = "网络请求失败"
-
         return result
 
     @log_method
     def get_status(self, cookies: str) -> Tuple[str, int]:
         """获取状态"""
-
         url = self._get_full_url(self.STATUS_URL)
         response = self._make_request(url, "GET", cookies=cookies)
-
         if response:
             data = response.json()
             code = data.get("code", -2)
             left_days = data.get("data", {}).get("leftDays", None)
-
             if left_days is not None:
                 left_days_int = int(float(left_days))
                 self._log("info", LogEmoji.SUCCESS, f"{{ code : {code}, leftDays : {left_days_int} 天}}")
@@ -331,12 +315,10 @@ class API:
         """获取积分"""
         url = self._get_full_url(self.POINTS_URL)
         response = self._make_request(url, "GET", cookies=cookies)
-
         if response:
             data = response.json()
             code = data.get("code", -2)
             points = data.get("points", None)
-
             if points is not None:
                 points_int = int(float(points))
                 self._log("info", LogEmoji.SUCCESS, f"{{ code : {code}, points : {points_int} 积分}}")
@@ -355,18 +337,16 @@ class API:
         """执行兑换"""
         url = self._get_full_url(self.EXCHANGE_URL)
         response = self._make_request(url, "POST", {"planType": plan}, cookies)
-
         if response:
             data = response.json()
             code = data.get("code", -2)
             message = data.get("message", "未知错误")
-
             if code == 0:
                 self._log("info", LogEmoji.SUCCESS, f"{{ code : {code}, message : {message} }}")
-                return f"兑换成功: {plan}"
+                return f"兑换成功:{plan}"
             else:
                 self._log("info", LogEmoji.FAIL, f"{{ code : {code}, message : {message} }}", force=True)
-                return f"兑换失败: {message}"
+                return f"兑换失败:{message}"
         else:
             self._log("warning", LogEmoji.WARNING, "兑换失败", force=True)
             return "兑换失败"
@@ -375,7 +355,6 @@ class API:
 @dataclass()
 class CheckinResult:
     """签到结果"""
-
     cookie_index: int
     domain: str
     status: str = "签到失败"
@@ -392,36 +371,57 @@ class CheckinResult:
 
 class PushService:
     """推送服务"""
-
     def __init__(self, config: Config):
         self.config = config
 
-    def send(self, title: str, content: str) -> bool:
-        """发送推送"""
+    def send_pushdeer(self, title: str, content: str) -> bool:
+        """发送PushDeer推送"""
         if not self.config.push_key:
-            logger.info(f"{LogEmoji.WARNING} 未设置推送密钥，跳过推送通知。")
+            logger.info(f"{LogEmoji.WARNING} 未设置PushDeer密钥，跳过PushDeer推送。")
             return False
-
         try:
             pushdeer = PushDeer(pushkey=self.config.push_key)
             pushdeer.send_text(title, desp=content)
-            logger.info(f"{LogEmoji.SUCCESS} 推送通知发送成功。")
+            logger.info(f"{LogEmoji.SUCCESS} PushDeer推送通知发送成功。")
             return True
         except Exception as e:
-            logger.error(f"{LogEmoji.ERROR} 发送推送通知失败: {e}")
+            logger.error(f"{LogEmoji.ERROR} PushDeer推送通知失败: {e}")
             return False
+
+    def send_pushplus(self, title: str, content: str) -> bool:
+        """发送PushPlus推送（markdown模板）"""
+        if not self.config.pushplus_key:
+            logger.info(f"{LogEmoji.WARNING} 未设置PushPlus密钥，跳过PushPlus推送。")
+            return False
+        url = "https://www.pushplus.plus/send"
+        payload = {
+            "token": self.config.pushplus_key,
+            "title": title,
+            "content": content,
+            "template": "markdown"
+        }
+        try:
+            resp = requests.post(url, json=payload, timeout=10)
+            resp.raise_for_status()
+            logger.info(f"{LogEmoji.SUCCESS} PushPlus推送通知发送成功。")
+            return True
+        except Exception as e:
+            logger.error(f"{LogEmoji.ERROR} PushPlus推送通知失败: {str(e)}")
+            return False
+
+    def send(self, title: str, content: str) -> bool:
+        """兼容原有PushDeer，保留旧入口"""
+        return self.send_pushdeer(title, content)
 
 
 class Checker:
     """签到"""
-
     def __init__(self, config: Config):
         self.config = config
         self.results = []
 
     def _log(self, cookie_idx: int, domain: str, emoji: str, message: str, force: bool = False) -> None:
         """统一日志输出方法"""
-
         if self.config.verbose or force:
             logger.info(f"{LogEmoji.COOKIE}[{cookie_idx}] {LogEmoji.DOMAIN}[{domain}] {emoji} {message}")
 
@@ -431,19 +431,14 @@ class Checker:
         domain_count = len(self.config.DOMAINS)
         total_tasks = cookie_count * domain_count
         task_idx = 0
-
         logger.info(f"{LogEmoji.INFO} 共 {cookie_count} 个 Cookie, {domain_count} 个域名, 共 {total_tasks} 个任务")
-
         for cookie_idx, cookie in enumerate(self.config.cookies_list, 1):
             logger.info(f"{LogEmoji.START} ========== 开始处理 Cookie {cookie_idx} ==========")
-
             for domain in self.config.DOMAINS:
                 task_idx += 1
                 logger.info(f"{LogEmoji.INFO} ----- 任务 {task_idx}/{total_tasks}: {LogEmoji.COOKIE}[{cookie_idx}] on {LogEmoji.DOMAIN}[{domain}] -----")
-
                 result = self._checkin_on_domain(cookie, cookie_idx, domain)
                 self.results.append(result)
-
                 result_message = f"结果: {result.status}"
                 if result.code == CheckinStatus.SUCCESS:
                     if self.config.verbose:
@@ -454,24 +449,21 @@ class Checker:
 
     def _checkin_on_domain(self, cookie: str, cookie_idx: int, domain: str) -> CheckinResult:
         result = CheckinResult(cookie_idx, domain)
-
         with API(domain, cookie_idx, verbose=self.config.verbose) as api:
             # 1. 获取状态
             self._log(cookie_idx, domain, LogEmoji.STATUS, "查询剩余天数")
             days_str, status_code = api.get_status(cookie)
             result.days = days_str
-
             # 2. 签到
             self._log(cookie_idx, domain, LogEmoji.CHECKIN, "执行签到")
             checkin_result = api.checkin(cookie)
             result.status = checkin_result["status"]
             result.code = checkin_result.get("code", CheckinStatus.FAILURE)
-
+            result.points = checkin_result["points"]
             # 3. 获取积分
             self._log(cookie_idx, domain, LogEmoji.POINTS, "查询总积分")
             points_str, points_num = api.get_points(cookie)
             result.points_total = points_str
-
             # 4. 执行兑换（未配置有效兑换计划时跳过）
             if self.config.exchange_plan in self.config.EXCHANGE_PLANS:
                 required_points = self.config.EXCHANGE_PLANS[self.config.exchange_plan]
@@ -485,7 +477,6 @@ class Checker:
             else:
                 result.exchange = "未配置兑换计划，跳过自动兑换"
                 self._log(cookie_idx, domain, LogEmoji.INFO, "未配置兑换计划，跳过自动兑换", force=True)
-
         return result
 
     def get_results(self) -> List[Dict[str, str]]:
@@ -493,30 +484,73 @@ class Checker:
         return [result.to_dict() for result in self.results]
 
     def format_results(self) -> Tuple[str, str, str]:
-        """格式化结果"""
+        """格式化结果：原有PushDeer纯文本 + 新增PushPlus Markdown美化格式（截图样式）"""
+        import time
         results = self.get_results()
-
         success_count = sum(1 for r in results if r["code"] == CheckinStatus.SUCCESS)
         repeat_count = sum(1 for r in results if r["code"] == CheckinStatus.REPEAT)
         fail_count = sum(1 for r in results if r["code"] == CheckinStatus.FAILURE)
 
-        title = f"GLaDOS 签到, 成功{success_count}, 失败{fail_count}, 重复{repeat_count}"
-
+        # ========== 原有PushDeer的简单文本，保持不动 ==========
+        title_pushdeer = f"GLaDOS 签到, 成功{success_count}, 失败{fail_count}, 重复{repeat_count}"
         send_content_lines = []
         log_content_lines = []
         for i, res in enumerate(results, 1):
             line = f"#{i} P:{res['points']} 剩余:{res['days']} 总积分:{res['points_total']} | {res['status']} | {res['exchange']}"
             send_content_lines.append(line)
-
             if self.config.verbose:
                 log_line = line
             else:
                 log_line = f"#{i} {res['status']}"
             log_content_lines.append(log_line)
-
-        content = "\n".join(send_content_lines)
+        content_pushdeer = "\n".join(send_content_lines)
         log_content = "\n".join(log_content_lines)
-        return title, content, log_content
+
+        # ========== 新增：PushPlus 美化Markdown消息，在这里处理小数，不改动底层API代码 ==========
+        sign_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        pushplus_body = f"""🎉Glados 自动签到通知
+签到时间：{sign_time}
+
+"""
+        for res in results:
+            # 在这里做字符串清洗，把 296.000000 → 296，**不修改底层get_points源码**
+            try:
+                today_point_int = int(float(res["points"]))
+                today_point_str = f"{today_point_int}"
+            except:
+                today_point_str = res["points"]
+
+            try:
+                total_point_raw = res["points_total"].replace(" 积分", "")
+                total_point_int = int(float(total_point_raw))
+                total_point_str = f"{total_point_int}"
+            except:
+                total_point_str = res["points_total"]
+
+            # 剩余天数清洗
+            try:
+                day_raw = res["days"].replace(" 天", "")
+                day_int = int(float(day_raw))
+                day_str = f"{day_int} 天"
+            except:
+                day_str = res["days"]
+
+            email = f"Cookie{res['cookie_index']}"
+            status_text = res["status"]
+            exchange_text = res["exchange"]
+
+            block = f"""📝{email} ✅
+📄状态：{status_text}，获得 {today_point_str} 积分
+🎁今日积分：{today_point_str}
+📅剩余时长：{day_str}
+💰总积分：{total_point_str} 积分
+💎兑换：{exchange_text}
+
+"""
+            pushplus_body += block
+
+        # 返回：PushDeer标题、PushDeer内容、日志内容、PushPlus标题、PushPlus美化内容
+        return title_pushdeer, content_pushdeer, log_content, "Glados 自动签到通知", pushplus_body
 
 
 # 初始化日志
@@ -529,29 +563,29 @@ def main():
         # 1. 加载配置
         logger.info(f"{LogEmoji.START} 步骤 1: 加载配置")
         config = Config()
-
         if not config.cookies_list:
             logger.error(f"{LogEmoji.ERROR} 未找到有效的 Cookie, 退出程序。")
-            title, content = "# 未找到 cookies!", ""
+            title, content, log_content, pp_title, pp_content = "# 未找到 cookies!", "", "", "", ""
         else:
             # 2. 执行签到
             logger.info(f"{LogEmoji.START} 步骤 2: 执行签到")
             checker = Checker(config)
             checker.checkin_all()
-
-            # 3. 格式化结果
+            # 3. 格式化结果（修改返回值，多返回PushPlus美化内容）
             logger.info(f"{LogEmoji.START} 步骤 3: 格式化结果")
-            title, content, log_content = checker.format_results()
+            title, content, log_content, pp_title, pp_content = checker.format_results()
             logger.info(f"\n{LogEmoji.END}========== 签到总结 ==========\n{title}\n{log_content}")
-
     except Exception as e:
         logger.error(f"{LogEmoji.ERROR} 主程序执行过程中发生未预期的错误: {e}")
-        title, content, log_content = "# 脚本执行出错", str(e), str(e)
+        title, content, log_content, pp_title, pp_content = "# 脚本执行出错", str(e), str(e), "Glados签到异常", str(e)
 
-    # 4. 发送推送
+    # 4. 推送
     logger.info(f"{LogEmoji.START} 步骤 4: 发送推送")
     push_service = PushService(config if "config" in locals() else "")
+    # 原有PushDeer推送不变
     push_service.send(title, content)
+    # 新增PushPlus推送
+    push_service.send_pushplus(pp_title, pp_content)
     logger.info(f"{LogEmoji.END} 签到完成")
 
 
