@@ -120,7 +120,7 @@ class GladosCheckin:
         return res_list
 
     def format_results(self) -> Tuple[str, str, str, str, str]:
-        """格式化结果：原有PushDeer纯文本 + PushPlus Markdown，一行一项，无多余空行"""
+        """格式化结果：PushDeer纯文本，PushPlus使用html模板，\n换行，和截图样式一致"""
         import time
         import re
         def clean_float_str(text):
@@ -137,19 +137,19 @@ class GladosCheckin:
         send_content_lines = []
         log_content_lines = []
         for i, res in enumerate(results, 1):
-            line = f"#{i} P:{res['points']} 剩余:{res['days']} 总积分:{res['points_total']} | {res['status']} | {res['exchange']}"
+            line = f"#{i} P:{res.points} 剩余:{res.days} 总积分:{res.points_total} | {res.status} | {res.exchange}"
             send_content_lines.append(line)
             if self.config.verbose:
                 log_line = line
             else:
-                log_line = f"#{i} {res['status']}"
+                log_line = f"#{i} {res.status}"
             log_content_lines.append(log_line)
         content_pushdeer = "\n".join(send_content_lines)
         log_content = "\n".join(log_content_lines)
 
-        # ========== PushPlus：分行排版，和截图样式一致 ==========
+        # ========== PushPlus 改用html模板，使用\n换行，完全复刻截图样式 ==========
         sign_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        pushplus_body = f"""📅签到时间：{sign_time}"""
+        pushplus_body = f"📅签到时间：{sign_time}"
         for res in results:
             # 数值清洗
             try:
@@ -176,14 +176,16 @@ class GladosCheckin:
             status_text = res.status
             exchange_text = clean_float_str(res.exchange)
 
-            # 账号内每一项单独换行；账号之间仅1个换行，无多余空白
-            block = f"""
-📝{email} ✅
-📄状态：{status_text}，获得 {today_point_str} 积分
-🎁今日积分：{today_point_str}
-📅剩余时长：{day_str}
-💰总积分：{total_point_str} 积分
-💎兑换：{exchange_text}"""
+            # 账号内每一项单独换行；账号之间空一行分隔
+            block = (
+                "\n\n"
+                f"📝{email} ✅\n"
+                f"📄状态：{status_text}，获得 {today_point_str} 积分\n"
+                f"🎁今日积分：{today_point_str}\n"
+                f"📅剩余时长：{day_str}\n"
+                f"💰总积分：{total_point_str} 积分\n"
+                f"💎兑换：{exchange_text}"
+            )
             pushplus_body += block
 
         return title_pushdeer, content_pushdeer, log_content, "Glados 自动签到通知", pushplus_body
@@ -206,12 +208,17 @@ class GladosCheckin:
                 "token": self.config.pushplus_token,
                 "title": title,
                 "content": content,
-                "template": "markdown"
+                "template": "html"
             }
-            requests.post("https://www.pushplus.plus/send", json=payload, timeout=15)
-            print("PushPlus推送成功")
+            resp = requests.post("https://www.pushplus.plus/send", json=payload, timeout=15)
+            print(f"PushPlus接口返回：{resp.text}")
+            resp_json = resp.json()
+            if resp_json.get("code") == 200:
+                print("PushPlus推送成功")
+            else:
+                print(f"PushPlus推送失败：{resp_json.get('msg')}")
         except Exception as e:
-            print(f"PushPlus推送失败：{e}")
+            print(f"PushPlus推送异常：{e}")
 
     def run(self):
         title_pd, content_pd, log_content, title_pp, content_pp = self.format_results()
